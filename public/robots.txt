@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /tap/*
+Allow: /onboarding
+Allow: /login
+Disallow: /dashboard/*
+Disallow: /admin/*
+

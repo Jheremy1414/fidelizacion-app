@@ -1,0 +1,18 @@
+{
+  "name": "BlockOps Loyalty",
+  "short_name": "BlockOps",
+  "description": "Tu tarjeta digital de fidelización con recompensas al instante",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090D16",
+  "theme_color": "#0B4BE3",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
