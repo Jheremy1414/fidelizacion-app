@@ -143,8 +143,10 @@ export const SuperAdminPage: React.FC = () => {
   const handleLogout = async () => {
     try {
       await signOut();
+    } catch (err) {
+      console.warn('Error al cerrar sesión:', err);
     } finally {
-      navigate('/login', { replace: true });
+      window.location.href = '/login';
     }
   };
 
@@ -433,6 +435,25 @@ export const SuperAdminPage: React.FC = () => {
       );
   }, [tenants, statusFilter, search]);
 
+  const activePaidCount = tenants.filter((t) => t.status === 'active').length;
+  const trialCount = tenants.filter((t) => t.status === 'trial').length;
+  const estimatedMrr = activePaidCount * 340;
+
+  const totalCollected = useMemo(() => {
+    return payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+  }, [payments]);
+
+  const thisMonthCollected = useMemo(() => {
+    const nowMonth = new Date().getMonth();
+    const nowYear = new Date().getFullYear();
+    return payments
+      .filter((p) => {
+        const d = new Date(p.paid_at || p.created_at);
+        return d.getMonth() === nowMonth && d.getFullYear() === nowYear;
+      })
+      .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+  }, [payments]);
+
   if (authLoading || (user && !tenantsLoaded)) {
     return (
       <div className="min-h-screen bg-[#090D16] text-white flex items-center justify-center">
@@ -452,7 +473,7 @@ export const SuperAdminPage: React.FC = () => {
           <ShieldAlert className="w-12 h-12 text-[#FF7A00] mx-auto" />
           <h1 className="font-display text-xl font-extrabold">Acceso exclusivo SuperAdmin</h1>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Tu cuenta (<code>{user.email}</code>) no tiene rol de administrador SaaS. Ejecuta{' '}
+            Tu cuenta (<code>{user?.email || 'Desconocida'}</code>) no tiene rol de administrador SaaS. Ejecuta{' '}
             <code>003_superadmin_setup.sql</code> en Supabase, verifica{' '}
             <code>VITE_SUPERADMIN_EMAIL</code> en <code>.env</code> y vuelve a iniciar sesión.
           </p>
@@ -476,25 +497,6 @@ export const SuperAdminPage: React.FC = () => {
       </div>
     );
   }
-
-  const activePaidCount = tenants.filter((t) => t.status === 'active').length;
-  const trialCount = tenants.filter((t) => t.status === 'trial').length;
-  const estimatedMrr = activePaidCount * 340;
-
-  const totalCollected = useMemo(() => {
-    return payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-  }, [payments]);
-
-  const thisMonthCollected = useMemo(() => {
-    const nowMonth = new Date().getMonth();
-    const nowYear = new Date().getFullYear();
-    return payments
-      .filter((p) => {
-        const d = new Date(p.paid_at || p.created_at);
-        return d.getMonth() === nowMonth && d.getFullYear() === nowYear;
-      })
-      .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-  }, [payments]);
 
   const updateStatus = async (tenantId: string, nextStatus: TenantStatus) => {
     await supabase.from('tenants').update({ status: nextStatus }).eq('id', tenantId);

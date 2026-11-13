@@ -141,8 +141,10 @@ export const DashboardLayout: React.FC = () => {
   const handleLogout = async () => {
     try {
       await signOut();
+    } catch (err) {
+      console.warn('Error al cerrar sesión:', err);
     } finally {
-      navigate('/login', { replace: true });
+      window.location.href = '/login';
     }
   };
 

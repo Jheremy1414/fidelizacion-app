@@ -1,6 +1,6 @@
 {
-  "name": "BlockOps Loyalty",
-  "short_name": "BlockOps",
+  "name": "Loyalty — Tarjetas Digitales de Fidelización",
+  "short_name": "Loyalty",
   "description": "Tu tarjeta digital de fidelización con recompensas al instante",
   "start_url": "/",
   "display": "standalone",
@@ -9,9 +9,9 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

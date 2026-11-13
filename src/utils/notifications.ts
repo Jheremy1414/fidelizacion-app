@@ -68,7 +68,7 @@ export async function showNativeNotification({
     }
   }
 
-  const resolvedIcon = icon || '/icon.svg';
+  const resolvedIcon = icon || '/icon.png';
   const resolvedBadge = badge || resolvedIcon;
   const options: NotificationOptions & { vibrate?: number[]; renotify?: boolean } = {
     body,
