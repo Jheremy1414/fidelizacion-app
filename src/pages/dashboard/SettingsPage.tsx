@@ -19,6 +19,7 @@ import {
 import { BoliviaLocationPicker } from '../../components/map/BoliviaLocationPicker';
 import { useApp } from '../../context/AppContext';
 import { supabase, uploadTenantLogo } from '../../lib/supabase';
+import { TouchNumberInput } from '../../components/ui/TouchNumberInput';
 import { LOYALTY_PLANS_META, ValidationMode } from '../../types/loyalty';
 
 export const SettingsPage: React.FC = () => {
@@ -29,6 +30,33 @@ export const SettingsPage: React.FC = () => {
   const [logoNotice, setLogoNotice] = useState<string | null>(null);
   const [cooldownHours, setCooldownHours] = useState(
     activeTenant?.program?.rules.cooldown_hours ?? 4
+  );
+  const [goalPoints, setGoalPoints] = useState<number>(
+    activeTenant?.program?.rules.goal_points ?? 500
+  );
+  const [pointsPerVisit, setPointsPerVisit] = useState<number>(
+    activeTenant?.program?.rules.points_per_visit ?? 50
+  );
+  const [stampsGoal, setStampsGoal] = useState<number>(
+    activeTenant?.program?.rules.goal ?? 10
+  );
+  const [targetSpend, setTargetSpend] = useState<number>(
+    activeTenant?.program?.rules.target_spend ?? 1000
+  );
+  const [discountPercent, setDiscountPercent] = useState<number>(
+    activeTenant?.program?.rules.discount_percent ?? 20
+  );
+  const [cashbackPercent, setCashbackPercent] = useState<number>(
+    activeTenant?.program?.rules.cashback_percent ?? 10
+  );
+  const [monthlyVisits, setMonthlyVisits] = useState<number>(
+    activeTenant?.program?.rules.monthly_visits ?? 4
+  );
+  const [rewardName, setRewardName] = useState<string>(
+    activeTenant?.program?.rules.reward ?? ''
+  );
+  const [programDescription, setProgramDescription] = useState<string>(
+    activeTenant?.program?.rules.description ?? ''
   );
   const [validationMode, setValidationMode] = useState<ValidationMode>(
     activeTenant?.program?.rules.validation_mode ||
@@ -61,6 +89,15 @@ export const SettingsPage: React.FC = () => {
     setLogoUrl(activeTenant.logo_url || null);
     const r = activeTenant.program?.rules;
     setCooldownHours(r?.cooldown_hours ?? 4);
+    setGoalPoints(r?.goal_points ?? 500);
+    setPointsPerVisit(r?.points_per_visit ?? 50);
+    setStampsGoal(r?.goal ?? 10);
+    setTargetSpend(r?.target_spend ?? 1000);
+    setDiscountPercent(r?.discount_percent ?? 20);
+    setCashbackPercent(r?.cashback_percent ?? 10);
+    setMonthlyVisits(r?.monthly_visits ?? 4);
+    setRewardName(r?.reward ?? '');
+    setProgramDescription(r?.description ?? '');
     setValidationMode(r?.validation_mode || (r?.auto_approve === false ? 'approval' : 'auto'));
     setCashierPin(r?.cashier_pin || '');
     setGpsRadiusMeters(r?.gps_radius_meters ?? 120);
@@ -141,6 +178,15 @@ export const SettingsPage: React.FC = () => {
         {
           rules: {
             ...currentProgram.rules,
+            goal_points: Number(goalPoints) || 500,
+            points_per_visit: Number(pointsPerVisit) || 50,
+            goal: Number(stampsGoal) || 10,
+            target_spend: Number(targetSpend) || 1000,
+            discount_percent: Number(discountPercent) || 20,
+            cashback_percent: Number(cashbackPercent) || 10,
+            monthly_visits: Number(monthlyVisits) || 4,
+            reward: rewardName.trim() || currentProgram.rules.reward,
+            description: programDescription.trim() || currentProgram.rules.description,
             cooldown_hours: Math.max(0, Number(cooldownHours)),
             validation_mode: validationMode,
             auto_approve: validationMode === 'auto',
@@ -275,33 +321,147 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Read-only Program Summary */}
-        <div className="rounded-2xl bg-slate-50/70 border border-slate-200/80 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-slate-400" />
-              <span>Plan y Programa Contratado</span>
+        {/* Configuración de Reglas del Programa de Fidelización */}
+        <div className="rounded-2xl bg-white border border-slate-200/90 p-4 sm:p-5 space-y-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                <Sliders className="w-4 h-4 text-[#0B4BE3]" />
+                <span>Reglas de Tu Programa · {planMeta.name}</span>
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Ajusta las metas de puntos, sellos o premios. Los cambios se reflejarán de inmediato en las tarjetas de tus clientes.
+              </p>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B4BE3] text-xs font-bold">
+              {planMeta.name}
             </span>
-            <span className="text-[11px] font-semibold text-slate-500">Solo lectura</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            <div className="rounded-xl bg-white border border-slate-200/70 p-3">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Comercio</span>
-              <strong className="text-slate-900 mt-0.5 block truncate">{activeTenant.name}</strong>
+
+          {activeTenant.program.type === 'points' && (
+            <div className="space-y-4">
+              <TouchNumberInput
+                label="Meta de Puntos para Recompensa"
+                value={goalPoints}
+                onChange={setGoalPoints}
+                min={50}
+                max={10000}
+                step={50}
+                suffix="pts"
+                presets={[100, 250, 500, 1000, 2000]}
+                helperText="Puntos acumulados requeridos para canjear el premio. Toca un valor o usa [+] y [-]."
+              />
+
+              <TouchNumberInput
+                label="Puntos Otorgados por Visita / Compra"
+                value={pointsPerVisit}
+                onChange={setPointsPerVisit}
+                min={5}
+                max={2000}
+                step={10}
+                suffix="pts"
+                presets={[10, 20, 50, 100]}
+                helperText="Puntos que suma el cliente automáticamente en cada escaneo en mostrador."
+              />
             </div>
-            <div className="rounded-xl bg-white border border-slate-200/70 p-3">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Motor</span>
-              <strong className="text-[#0B4BE3] mt-0.5 block truncate">{planMeta.name}</strong>
+          )}
+
+          {activeTenant.program.type === 'stamps' && (
+            <div>
+              <TouchNumberInput
+                label="Meta de Sellos para Recompensa"
+                value={stampsGoal}
+                onChange={setStampsGoal}
+                min={3}
+                max={30}
+                step={1}
+                suffix="sellos"
+                presets={[5, 8, 10, 12]}
+                helperText="Cantidad de sellos requeridos para llenar la tarjeta y ganar el beneficio."
+              />
             </div>
-            <div className="rounded-xl bg-white border border-slate-200/70 p-3">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Programa</span>
-              <strong className="text-slate-900 mt-0.5 block truncate">{activeTenant.program.name}</strong>
+          )}
+
+          {activeTenant.program.type === 'discount' && (
+            <div className="space-y-4">
+              <TouchNumberInput
+                label="Meta de Gasto Acumulado"
+                value={targetSpend}
+                onChange={setTargetSpend}
+                min={50}
+                max={50000}
+                step={100}
+                suffix="Bs"
+                presets={[200, 500, 1000, 2000]}
+              />
+              <TouchNumberInput
+                label="% Descuento Otorgado"
+                value={discountPercent}
+                onChange={setDiscountPercent}
+                min={5}
+                max={90}
+                step={5}
+                suffix="%"
+                presets={[10, 15, 20, 25, 30]}
+              />
             </div>
-            <div className="rounded-xl bg-white border border-slate-200/70 p-3">
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Premio Principal</span>
-              <strong className="text-[#FF7A00] mt-0.5 block truncate">
-                {activeTenant.program.rules.reward}
-              </strong>
+          )}
+
+          {activeTenant.program.type === 'cashback' && (
+            <div>
+              <TouchNumberInput
+                label="% Cashback Acumulable"
+                value={cashbackPercent}
+                onChange={setCashbackPercent}
+                min={1}
+                max={50}
+                step={1}
+                suffix="%"
+                presets={[5, 10, 15, 20]}
+              />
+            </div>
+          )}
+
+          {activeTenant.program.type === 'subscription' && (
+            <div>
+              <TouchNumberInput
+                label="Visitas Mensuales Incluidas"
+                value={monthlyVisits}
+                onChange={setMonthlyVisits}
+                min={1}
+                max={31}
+                step={1}
+                suffix="visitas"
+                presets={[2, 4, 8, 12]}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Premio / Beneficio al Completar *
+              </label>
+              <input
+                type="text"
+                required
+                value={rewardName}
+                onChange={(e) => setRewardName(e.target.value)}
+                placeholder="Ej. 1 Café Americano Gratis"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#0B4BE3]/30 focus:border-[#0B4BE3]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Instrucciones / Condiciones (opcional)
+              </label>
+              <input
+                type="text"
+                value={programDescription}
+                onChange={(e) => setProgramDescription(e.target.value)}
+                placeholder="Ej. Válido de Lunes a Domingo"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#0B4BE3]/30 focus:border-[#0B4BE3]"
+              />
             </div>
           </div>
         </div>

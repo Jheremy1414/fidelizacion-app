@@ -59,7 +59,8 @@ interface AppContextValue {
   }>;
   signUp: (
     email: string,
-    password: string
+    password: string,
+    metadata?: Record<string, unknown>
   ) => Promise<{ error: string | null; needsConfirmation: boolean; hasSession: boolean; user: User | null }>;
   signOut: () => Promise<void>;
   createTenantWithProgram: (payload: CreateTenantPayload, ownerOverride?: User | null) => Promise<TenantWithProgram>;
@@ -147,6 +148,15 @@ async function insertTenantAndProgramForUser(
     .insert({ ...baseInsert, owner_email: ownerUser.email ?? null })
     .select()
     .single();
+
+  if (createdTenantRes.error && /duplicate|unique|conflict/i.test(createdTenantRes.error.message)) {
+    const fallbackSlug = `${cleanSlug}-${Math.floor(100 + Math.random() * 900)}`;
+    createdTenantRes = await supabase
+      .from('tenants')
+      .insert({ ...baseInsert, slug: fallbackSlug, owner_email: ownerUser.email ?? null })
+      .select()
+      .single();
+  }
 
   if (createdTenantRes.error && /owner_email/i.test(createdTenantRes.error.message)) {
     createdTenantRes = await supabase.from('tenants').insert(baseInsert).select().single();
@@ -317,19 +327,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Auto-complete deferred onboarding draft (e.g. after email confirmation login)
       if (normalized.length === 0 && !superAdminFlag) {
-        const rawDraft = localStorage.getItem(ONBOARDING_DRAFT_KEY);
-        if (rawDraft) {
-          try {
-            const draft = JSON.parse(rawDraft) as CreateTenantPayload;
-            if (draft?.name && draft?.slug) {
-              const created = await insertTenantAndProgramForUser(targetUser, draft);
-              normalized = [created];
+        let draftObj: CreateTenantPayload | null = null;
+        try {
+          const userMetaDraft = targetUser.user_metadata?.onboarding_draft;
+          if (userMetaDraft && typeof userMetaDraft === 'object') {
+            draftObj = userMetaDraft as CreateTenantPayload;
+          } else {
+            const rawLocal = localStorage.getItem(ONBOARDING_DRAFT_KEY);
+            if (rawLocal) {
+              draftObj = JSON.parse(rawLocal) as CreateTenantPayload;
             }
-          } catch {
-            // Keep clean state if draft cannot be applied
-          } finally {
-            localStorage.removeItem(ONBOARDING_DRAFT_KEY);
           }
+
+          if (draftObj && draftObj.name && draftObj.slug) {
+            const created = await insertTenantAndProgramForUser(targetUser, draftObj);
+            normalized = [created];
+          }
+        } catch (draftErr) {
+          console.error('Error al aplicar draft de onboarding tras confirmar email:', draftErr);
+        } finally {
+          localStorage.removeItem(ONBOARDING_DRAFT_KEY);
         }
       }
 
@@ -508,8 +525,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { error: error ? error.message : null, user: null, destination: null };
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string, metadata?: Record<string, unknown>) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: metadata ? { data: metadata } : undefined,
+    });
     const hasSession = Boolean(!error && data.session && data.user);
     if (hasSession && data.user) {
       setTenantsLoaded(false);

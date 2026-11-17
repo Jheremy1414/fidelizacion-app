@@ -332,27 +332,28 @@ export const DashboardLayout: React.FC = () => {
           </div>
         )}
 
-        <header className="sticky top-0 z-20 bg-[#F8FAFC]/85 backdrop-blur-md border-b border-slate-200/70 px-4 sm:px-7 py-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 bg-[#F8FAFC]/85 backdrop-blur-md border-b border-slate-200/70 px-3.5 sm:px-7 py-3">
+          <div className="flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm"
+                className="lg:hidden p-2 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm shrink-0"
+                aria-label="Abrir menú"
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <div>
-                <h1 className="font-display text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              <div className="min-w-0">
+                <h1 className="font-display text-sm sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate">
                   👋 ¡Hola, {activeTenant.name}!
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-500">
-                  Resumen en tiempo real de tu programa de fidelización
+                <p className="text-[11px] sm:text-sm text-slate-500 truncate hidden xs:block">
+                  Resumen en tiempo real de tu programa
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               {myTenants.length > 1 ? (
                 <div className="relative">
                   <button
@@ -532,11 +533,49 @@ export const DashboardLayout: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-7">
+        <main className="flex-1 p-3.5 sm:p-7 pb-24 lg:pb-7">
           <Outlet />
         </main>
 
-        <footer className="border-t border-slate-200/80 bg-white/80 backdrop-blur-sm px-4 sm:px-7 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+        {/* Barra de Navegación Inferior para Celulares */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090D16]/95 backdrop-blur-md border-t border-white/10 px-2 py-1.5 flex justify-around items-center">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/dashboard'}
+                className={({ isActive }) =>
+                  `flex flex-col items-center justify-center py-1 px-2 rounded-xl transition relative ${
+                    isActive ? 'text-[#0EA5E9]' : 'text-slate-400 hover:text-white'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <div className="relative">
+                      <Icon className="w-5 h-5" />
+                      {item.to === '/dashboard' && pendingCount > 0 && (
+                        <span className="absolute -top-1 -right-2 h-4 min-w-4 px-1 rounded-full text-[10px] font-extrabold bg-[#FF7A00] text-white flex items-center justify-center">
+                          {pendingCount}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold mt-1 tracking-tight">
+                      {item.label}
+                    </span>
+                    {isActive && (
+                      <span className="absolute bottom-0 w-4 h-0.5 rounded-full bg-[#0EA5E9]" />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <footer className="border-t border-slate-200/80 bg-white/80 backdrop-blur-sm px-4 sm:px-7 py-3 hidden lg:flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
           <div className="flex items-center gap-4">
             <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />

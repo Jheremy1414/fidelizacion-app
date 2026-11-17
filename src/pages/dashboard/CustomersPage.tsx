@@ -424,7 +424,104 @@ export const CustomersPage: React.FC = () => {
       </div>
 
       <div className="glass-card-light rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Customer Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {filteredCards.length === 0 ? (
+            <div className="py-10 px-4 text-center text-slate-400 text-xs">
+              Aún no hay clientes registrados. Comparte tu QR en mostrador.
+            </div>
+          ) : (
+            filteredCards.map((card) => {
+              const fullName = card.customer?.full_name || 'Cliente';
+              const phone = card.customer?.phone || '';
+              return (
+                <div key={card.id} className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#0EA5E9] to-[#0B4BE3] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        {fullName
+                          .split(' ')
+                          .map((n) => n[0])
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                          {fullName}
+                        </div>
+                        <div className="text-[11px] text-slate-500">{phone}</div>
+                      </div>
+                    </div>
+                    {typeof card.customer?.age === 'number' && card.customer.age > 0 && (
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold shrink-0">
+                        {card.customer.age} años
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200/60">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                        Saldo Actual
+                      </span>
+                      <strong className="text-sm font-extrabold text-[#0B4BE3]">
+                        {card.current_balance}{' '}
+                        {engine === 'points'
+                          ? 'pts'
+                          : engine === 'stamps'
+                          ? 'sellos'
+                          : engine === 'cashback'
+                          ? formatBs(card.current_balance)
+                          : 'visitas'}
+                      </strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200/60">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                        Wallet
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">
+                        {card.google_object_id ? '✓ Google Wallet' : 'Web Pass'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await manualAdjustCard(card.id);
+                        triggerToast(`Sumado a ${fullName}`);
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0B4BE3]/10 hover:bg-[#0B4BE3] text-[#0B4BE3] hover:text-white py-2 text-xs font-bold transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{manualButtonLabel}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await redeemCardReward(card.id);
+                        triggerToast(
+                          engine === 'subscription'
+                            ? `Visitas renovadas para ${fullName}`
+                            : `Premio canjeado para ${fullName}`
+                        );
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/15 hover:bg-[#FF7A00] text-[#FF7A00] hover:text-white py-2 text-xs font-bold transition"
+                    >
+                      <Gift className="w-3.5 h-3.5" />
+                      <span>{engine === 'subscription' ? 'Renovar' : 'Canjear'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
