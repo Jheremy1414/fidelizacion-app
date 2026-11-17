@@ -29,7 +29,7 @@ import { BoliviaLocationPicker } from '../components/map/BoliviaLocationPicker';
 import { TouchNumberInput } from '../components/ui/TouchNumberInput';
 import { DigitalPassCard } from '../components/wallet/DigitalPassCard';
 import { getAuthenticatedHomePath, ONBOARDING_DRAFT_KEY, useApp } from '../context/AppContext';
-import { isSupabaseConfigured, uploadTenantLogo } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, uploadTenantLogo } from '../lib/supabase';
 import { LOYALTY_PLANS_META, LoyaltyRules, ProgramType } from '../types/loyalty';
 
 const BRAND_COLORS = [
@@ -92,6 +92,7 @@ export const OnboardingPage: React.FC = () => {
   const [password, setPassword] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [emailConfirmationNotice, setEmailConfirmationNotice] = useState(false);
 
@@ -172,9 +173,50 @@ export const OnboardingPage: React.FC = () => {
     setSubmitting(true);
     try {
       let ownerUser = user;
+      const cleanName = name.trim();
+      const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+      // VERIFICACIÓN ESTRICTA: Si el nombre comercial o slug ya existe en la base de datos, BLOQUEAR la creación
+      const { data: existingBusiness } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .or(`name.ilike.${cleanName},slug.eq.${cleanSlug}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingBusiness) {
+        const isSameName = existingBusiness.name.toLowerCase() === cleanName.toLowerCase();
+        setErrorMsg(
+          isSameName
+            ? `Ya existe un negocio registrado con el nombre "${existingBusiness.name}". Por favor elige otro nombre comercial.`
+            : `El enlace "/tap/${cleanSlug}" ya está registrado por otro negocio. Por favor elige otro nombre o URL.`
+        );
+        setStep(1);
+        setSubmitting(false);
+        return;
+      }
+
+      // Si es un usuario nuevo, verificar si ya tiene un negocio registrado con ese correo
+      if (!ownerUser && email.trim()) {
+        const { data: existingEmailTenant } = await supabase
+          .from('tenants')
+          .select('id, name')
+          .ilike('owner_email', email.trim().toLowerCase())
+          .limit(1)
+          .maybeSingle();
+
+        if (existingEmailTenant) {
+          setErrorMsg(
+            `Ya existe un negocio (${existingEmailTenant.name}) registrado con el correo "${email.trim()}". Inicia sesión en /login para administrarlo.`
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
       const draftPayload = {
-        name: name.trim(),
-        slug: slug.trim(),
+        name: cleanName,
+        slug: cleanSlug,
         logo_url: uploadedLogoUrl,
         brand_color: brandColor,
         type: planType,
@@ -188,7 +230,7 @@ export const OnboardingPage: React.FC = () => {
       let finalLogoUrl: string | null = uploadedLogoUrl;
       if (!finalLogoUrl && logoFile) {
         try {
-          finalLogoUrl = await uploadTenantLogo(logoFile, slug);
+          finalLogoUrl = await uploadTenantLogo(logoFile, cleanSlug);
         } catch (uploadErr) {
           console.warn('No se pudo subir logo a storage:', uploadErr);
         }
@@ -204,7 +246,7 @@ export const OnboardingPage: React.FC = () => {
         if (!email.trim() || password.length < 6) {
           throw new Error('Ingresa tu correo y una contraseña de al menos 6 caracteres para crear tu cuenta.');
         }
-        const { error, needsConfirmation, user: signedUser } = await signUp(
+        const { error, needsConfirmation, user: signedUser, tenants: createdTenants } = await signUp(
           email.trim(),
           password,
           { onboarding_draft: enrichedDraft }
@@ -217,10 +259,30 @@ export const OnboardingPage: React.FC = () => {
           return;
         }
         ownerUser = signedUser;
+
+        // Si fetchMyTenants ya creó el negocio a partir de onboarding_draft durante el signUp con sesión inmediata, no crear otro
+        if (createdTenants && createdTenants.length > 0) {
+          navigate('/dashboard', { replace: true });
+          return;
+        }
       }
 
-      // 3. Create tenant + loyalty_program (14-day trial) saving logo_url in tenants.logo_url
-      await createTenantWithProgram(enrichedDraft, ownerUser);
+      // 3. Crear tenant y programa verificando directamente en base de datos para no duplicar
+      if (ownerUser) {
+        const { data: userTenants } = await supabase
+          .from('tenants')
+          .select('id, name, slug')
+          .eq('owner_user_id', ownerUser.id);
+
+        const alreadyCreated = (userTenants || []).some(
+          (t: { slug: string; name: string }) =>
+            t.slug === cleanSlug || t.name.toLowerCase() === cleanName.toLowerCase()
+        );
+
+        if (!alreadyCreated) {
+          await createTenantWithProgram(enrichedDraft, ownerUser);
+        }
+      }
 
       navigate('/dashboard', { replace: true });
     } catch (err) {
@@ -277,7 +339,14 @@ export const OnboardingPage: React.FC = () => {
             <button
               key={item.num}
               type="button"
-              onClick={() => setStep(item.num as 1 | 2 | 3)}
+              onClick={() => {
+                if (item.num > 1 && (!name.trim() || !slug.trim())) {
+                  setErrorMsg('Ingresa primero el nombre y URL de tu negocio.');
+                  setStep(1);
+                  return;
+                }
+                setStep(item.num as 1 | 2 | 3);
+              }}
               className={`px-3.5 py-1.5 rounded-full border transition ${
                 step === item.num
                   ? 'bg-[#0B4BE3] text-white border-[#0B4BE3] shadow-sm'
@@ -830,17 +899,46 @@ export const OnboardingPage: React.FC = () => {
             {step < 3 ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (step === 1 && (!name.trim() || !slug.trim())) {
-                    setErrorMsg('Ingresa el nombre y URL de tu negocio para continuar.');
-                    return;
+                disabled={checkingDuplicate}
+                onClick={async () => {
+                  if (step === 1) {
+                    if (!name.trim() || !slug.trim()) {
+                      setErrorMsg('Ingresa el nombre y URL de tu negocio para continuar.');
+                      return;
+                    }
+                    setErrorMsg(null);
+                    setCheckingDuplicate(true);
+                    try {
+                      const cleanName = name.trim();
+                      const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+                      const { data: existing } = await supabase
+                        .from('tenants')
+                        .select('id, name, slug')
+                        .or(`name.ilike.${cleanName},slug.eq.${cleanSlug}`)
+                        .limit(1)
+                        .maybeSingle();
+
+                      if (existing) {
+                        const isSameName = existing.name.toLowerCase() === cleanName.toLowerCase();
+                        setErrorMsg(
+                          isSameName
+                            ? `Ya existe un negocio registrado con el nombre "${existing.name}". Por favor elige otro nombre comercial.`
+                            : `El enlace "/tap/${cleanSlug}" ya está registrado por otro negocio. Por favor elige otro nombre o URL.`
+                        );
+                        return;
+                      }
+                    } catch (err) {
+                      console.warn('Error verificando nombre duplicado:', err);
+                    } finally {
+                      setCheckingDuplicate(false);
+                    }
                   }
                   setErrorMsg(null);
                   setStep((step + 1) as 2 | 3);
                 }}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0EA5E9] to-[#0B4BE3] px-6 py-3 text-xs sm:text-sm font-extrabold text-white shadow-glow-cobalt hover:brightness-105 transition"
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0EA5E9] to-[#0B4BE3] px-6 py-3 text-xs sm:text-sm font-extrabold text-white shadow-glow-cobalt hover:brightness-105 disabled:opacity-60 transition"
               >
-                <span>Siguiente Paso</span>
+                <span>{checkingDuplicate ? 'Verificando nombre...' : 'Siguiente Paso'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (

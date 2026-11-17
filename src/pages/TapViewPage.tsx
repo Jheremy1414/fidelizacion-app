@@ -97,6 +97,7 @@ export const TapViewPage: React.FC = () => {
   const pendingTxIdRef = useRef<string | null>(null);
   const tenantRef = useRef<TenantWithProgram | null>(null);
   const realtimeSeqRef = useRef<number>(0);
+  const handledPushKeysRef = useRef<Set<string>>(new Set());
 
   const isIos = isIosDevice();
 
@@ -639,6 +640,16 @@ export const TapViewPage: React.FC = () => {
         };
         const title = pushRow.title || currentTenant?.name || 'Nueva Promoción';
         const body = pushRow.message || 'Tienes una nueva promoción disponible.';
+        const pushKey = pushRow.id ? `id-${pushRow.id}` : `${title.trim()}::${body.trim()}`;
+
+        if (handledPushKeysRef.current.has(pushKey)) {
+          return;
+        }
+        handledPushKeysRef.current.add(pushKey);
+        if (handledPushKeysRef.current.size > 100) {
+          handledPushKeysRef.current.clear();
+          handledPushKeysRef.current.add(pushKey);
+        }
 
         setBanner({
           type: 'success',
@@ -650,7 +661,7 @@ export const TapViewPage: React.FC = () => {
           body,
           icon: currentTenant?.logo_url,
           badge: currentTenant?.logo_url,
-          tag: pushRow.id ? `marketing-push-${pushRow.id}` : `marketing-push-${title}::${body}`,
+          tag: `marketing-push-${pushKey}`,
           url: currentTenant ? `/tap/${currentTenant.slug}` : window.location.pathname,
         });
       }

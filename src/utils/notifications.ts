@@ -37,7 +37,7 @@ export function requestCustomerNotificationPermission(): Promise<NotificationPer
 }
 
 const recentNotificationTimestamps = new Map<string, number>();
-const DEDUPE_WINDOW_MS = 10_000;
+const DEDUPE_WINDOW_MS = 25_000;
 
 export async function showNativeNotification({
   title,
@@ -55,13 +55,23 @@ export async function showNativeNotification({
     return false;
   }
 
-  const dedupeKey = tag || `${title}::${body}`;
+  // Deduplicación estricta por contenido y ventana de tiempo (25 segundos)
+  const contentKey = `${(title || '').trim()}::${(body || '').trim()}`;
   const now = Date.now();
-  const lastShown = recentNotificationTimestamps.get(dedupeKey);
-  if (lastShown && now - lastShown < DEDUPE_WINDOW_MS) {
+  const lastShownContent = recentNotificationTimestamps.get(contentKey);
+  if (lastShownContent && now - lastShownContent < DEDUPE_WINDOW_MS) {
     return false;
   }
-  recentNotificationTimestamps.set(dedupeKey, now);
+  recentNotificationTimestamps.set(contentKey, now);
+
+  if (tag) {
+    const lastShownTag = recentNotificationTimestamps.get(tag);
+    if (lastShownTag && now - lastShownTag < DEDUPE_WINDOW_MS) {
+      return false;
+    }
+    recentNotificationTimestamps.set(tag, now);
+  }
+
   if (recentNotificationTimestamps.size > 50) {
     for (const [k, ts] of recentNotificationTimestamps.entries()) {
       if (now - ts >= DEDUPE_WINDOW_MS) recentNotificationTimestamps.delete(k);
@@ -75,7 +85,7 @@ export async function showNativeNotification({
     icon: resolvedIcon,
     badge: resolvedBadge,
     vibrate: [200, 100, 200],
-    tag: dedupeKey,
+    tag: tag || contentKey,
     renotify: false,
     data: { url: url || window.location.pathname },
   };

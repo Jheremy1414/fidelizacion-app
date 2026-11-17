@@ -539,7 +539,7 @@ serve(async (req) => {
       }
 
       const validIds: string[] = Array.isArray(googleObjectIds)
-        ? googleObjectIds.filter((id) => typeof id === "string" && id.trim().length > 0)
+        ? Array.from(new Set(googleObjectIds.filter((id) => typeof id === "string" && id.trim().length > 0)))
         : [];
 
       if (validIds.length === 0) {
@@ -583,25 +583,9 @@ serve(async (req) => {
         })
       );
 
-      // Guardar el registro en marketing_pushes si viene tenantId
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-      if (tenantId && supabaseUrl && serviceRoleKey) {
-        try {
-          const adminClient = createClient(supabaseUrl, serviceRoleKey);
-          await adminClient.from("marketing_pushes").insert({
-            tenant_id: tenantId,
-            title: String(pushTitle).slice(0, 80),
-            message: String(pushBody).slice(0, 250),
-            sent_count: delivered,
-          });
-        } catch {
-          // Ignorar fallo de inserción si ya existe
-        }
-      }
-
+      // La inserción en marketing_pushes la realiza de forma centralizada AppContext para evitar eventos realtime duplicados
       return new Response(
-        JSON.stringify({ success: true, sentCount: delivered, insertedInDb: true }),
+        JSON.stringify({ success: true, sentCount: delivered }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

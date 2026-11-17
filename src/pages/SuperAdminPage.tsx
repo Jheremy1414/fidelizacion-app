@@ -380,7 +380,27 @@ export const SuperAdminPage: React.FC = () => {
 
     setBranchCreating(true);
     try {
+      const cleanBranchName = branchName.trim();
       const cleanSlug = branchSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+      // Bloqueo estricto de duplicados en sucursales
+      const { data: existingBranch } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .or(`name.ilike.${cleanBranchName},slug.eq.${cleanSlug}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingBranch) {
+        const isSameName = existingBranch.name.toLowerCase() === cleanBranchName.toLowerCase();
+        setBranchError(
+          isSameName
+            ? `Ya existe un negocio o sucursal con el nombre "${existingBranch.name}". Por favor elige otro nombre comercial.`
+            : `El enlace "/tap/${cleanSlug}" ya está registrado por otro negocio. Por favor elige otro slug.`
+        );
+        return;
+      }
+
       const meta = LOYALTY_PLANS_META[branchType];
 
       const { data: newTenant, error: tErr } = await supabase
@@ -530,7 +550,27 @@ export const SuperAdminPage: React.FC = () => {
 
     setCreating(true);
     try {
+      const cleanColdName = coldName.trim();
       const cleanSlug = coldSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+      // Bloqueo estricto de duplicados en creación directa SuperAdmin
+      const { data: existingBusiness } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .or(`name.ilike.${cleanColdName},slug.eq.${cleanSlug}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingBusiness) {
+        const isSameName = existingBusiness.name.toLowerCase() === cleanColdName.toLowerCase();
+        setColdError(
+          isSameName
+            ? `Ya existe un negocio registrado con el nombre "${existingBusiness.name}". Por favor elige otro nombre comercial.`
+            : `El enlace "/tap/${cleanSlug}" ya está registrado por otro negocio. Por favor elige otro slug.`
+        );
+        return;
+      }
+
       let uploadedLogoUrl: string | null = null;
       if (coldLogoFile) {
         uploadedLogoUrl = await uploadTenantLogo(coldLogoFile, cleanSlug || 'comercio');

@@ -61,7 +61,13 @@ interface AppContextValue {
     email: string,
     password: string,
     metadata?: Record<string, unknown>
-  ) => Promise<{ error: string | null; needsConfirmation: boolean; hasSession: boolean; user: User | null }>;
+  ) => Promise<{
+    error: string | null;
+    needsConfirmation: boolean;
+    hasSession: boolean;
+    user: User | null;
+    tenants?: TenantWithProgram[];
+  }>;
   signOut: () => Promise<void>;
   createTenantWithProgram: (payload: CreateTenantPayload, ownerOverride?: User | null) => Promise<TenantWithProgram>;
   updateTenantAndProgram: (
@@ -130,11 +136,30 @@ async function insertTenantAndProgramForUser(
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-|-$/g, '');
 
+  const cleanName = payload.name.trim();
+
+  // Bloqueo estricto previo: Si ya existe en la base de datos con el mismo nombre o slug, rechazar
+  const { data: existingBusiness } = await supabase
+    .from('tenants')
+    .select('id, name, slug')
+    .or(`name.ilike.${cleanName},slug.eq.${cleanSlug}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingBusiness) {
+    const isSameName = existingBusiness.name.toLowerCase() === cleanName.toLowerCase();
+    throw new Error(
+      isSameName
+        ? `Ya existe un negocio registrado con el nombre "${existingBusiness.name}". Por favor elige otro nombre comercial.`
+        : `El enlace "/tap/${cleanSlug}" ya está registrado por otro negocio. Por favor elige otro nombre comercial o URL.`
+    );
+  }
+
   const trialEndsAt = new Date(Date.now() + 14 * 86400 * 1000).toISOString();
   const baseInsert = {
     owner_user_id: ownerUser.id,
     slug: cleanSlug,
-    name: payload.name.trim(),
+    name: cleanName,
     logo_url: payload.logo_url,
     brand_color: payload.brand_color,
     lat: payload.lat,
@@ -149,20 +174,14 @@ async function insertTenantAndProgramForUser(
     .select()
     .single();
 
-  if (createdTenantRes.error && /duplicate|unique|conflict/i.test(createdTenantRes.error.message)) {
-    const fallbackSlug = `${cleanSlug}-${Math.floor(100 + Math.random() * 900)}`;
-    createdTenantRes = await supabase
-      .from('tenants')
-      .insert({ ...baseInsert, slug: fallbackSlug, owner_email: ownerUser.email ?? null })
-      .select()
-      .single();
-  }
-
   if (createdTenantRes.error && /owner_email/i.test(createdTenantRes.error.message)) {
     createdTenantRes = await supabase.from('tenants').insert(baseInsert).select().single();
   }
 
   if (createdTenantRes.error || !createdTenantRes.data) {
+    if (/duplicate|unique|conflict/i.test(createdTenantRes.error?.message || '')) {
+      throw new Error(`El nombre comercial o enlace "${cleanSlug}" ya existe en el sistema. Por favor elige otro nombre comercial.`);
+    }
     throw new Error(createdTenantRes.error?.message || 'No se pudo registrar el negocio');
   }
 
@@ -342,6 +361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (draftObj && draftObj.name && draftObj.slug) {
             const created = await insertTenantAndProgramForUser(targetUser, draftObj);
             normalized = [created];
+            void supabase.auth.updateUser({ data: { onboarding_draft: null } });
           }
         } catch (draftErr) {
           console.error('Error al aplicar draft de onboarding tras confirmar email:', draftErr);
@@ -532,17 +552,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       options: metadata ? { data: metadata } : undefined,
     });
     const hasSession = Boolean(!error && data.session && data.user);
+    let createdTenants: TenantWithProgram[] = [];
     if (hasSession && data.user) {
       setTenantsLoaded(false);
       setSession(data.session);
       setUser(data.user);
-      await fetchMyTenants(data.user);
+      createdTenants = await fetchMyTenants(data.user);
     }
     return {
       error: error ? error.message : null,
       needsConfirmation: Boolean(!error && data.user && !data.session),
       hasSession,
       user: data.user ?? null,
+      tenants: createdTenants,
     };
   };
 
@@ -898,7 +920,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       let delivered = 0;
       let hadError = false;
-      let serverAlreadySavedPush = false;
 
       try {
         const { data, error } = await supabase.functions.invoke('wallet-pass', {
@@ -914,9 +935,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           delivered = Number(
             data?.sentCount ?? data?.delivered ?? data?.count ?? googleObjectIds.length
           );
-          serverAlreadySavedPush = Boolean(
-            data?.marketingPushId || data?.pushId || data?.insertedInDb || data?.saved
-          );
         } else {
           hadError = true;
         }
@@ -924,27 +942,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         hadError = true;
       }
 
-      if (!serverAlreadySavedPush) {
-        const fifteenSecsAgoIso = new Date(Date.now() - 15_000).toISOString();
-        const { data: recentExisting } = await supabase
-          .from('marketing_pushes')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('title', title)
-          .eq('message', message)
-          .gte('created_at', fifteenSecsAgoIso)
-          .limit(1)
-          .maybeSingle();
+      // Registro único y protegido contra duplicados en marketing_pushes
+      const twentySecsAgoIso = new Date(Date.now() - 20_000).toISOString();
+      const { data: recentExisting } = await supabase
+        .from('marketing_pushes')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('title', title)
+        .eq('message', message)
+        .gte('created_at', twentySecsAgoIso)
+        .limit(1)
+        .maybeSingle();
 
-        if (!recentExisting?.id) {
-          const { error: dbErr } = await supabase.from('marketing_pushes').insert({
-            tenant_id: tenantId,
-            title,
-            message,
-            sent_count: delivered,
-          });
-          if (dbErr) throw new Error(dbErr.message);
-        }
+      if (!recentExisting?.id) {
+        const { error: dbErr } = await supabase.from('marketing_pushes').insert({
+          tenant_id: tenantId,
+          title,
+          message,
+          sent_count: delivered,
+        });
+        if (dbErr) throw new Error(dbErr.message);
       }
 
       await fetchTenantDetails(tenantId);
